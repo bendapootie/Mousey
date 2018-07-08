@@ -1,3 +1,16 @@
+# Visual Studio files
+*/.vs/
+*proj.user
+*.suo
+
+# Intermediate files
+Mousey/JoystickTest/obj/
+Mousey/Mousey/bin/
+Mousey/bin*
+
+# Output files
+*.pdb
+
 # Prerequisites
 *.d
 
