@@ -250,6 +250,9 @@ namespace JoytsicTest
         int FrameNumber = 0;
         UInt32 GamepadId = 0;
         GamepadHistory GamepadHistory = new GamepadHistory();
+        Dictionary<GamepadButton, int> SimpleButtonToKeyMap = new Dictionary<GamepadButton, int>();
+        PointF RelativeMouseMovementRemainder = new PointF(0.0f, 0.0f);
+        float RelativeMouseSensitivity = 10.0f;
 
         public Form1()
         {
@@ -278,6 +281,15 @@ namespace JoytsicTest
             UpdateTimer.Tick += TimerUpdate;
             UpdateTimer.Enabled = true;
             UpdateTimer.Start();
+
+            SimpleButtonToKeyMap.Add(GamepadButton.Y, KeyValue_R);             // 'R' - Reload
+            SimpleButtonToKeyMap.Add(GamepadButton.X, KeyValue_F);             // 'F' - Interact
+            SimpleButtonToKeyMap.Add(GamepadButton.DPAD_UP, KeyValue_7);       // '7' - Bandage
+            SimpleButtonToKeyMap.Add(GamepadButton.DPAD_DOWN, KeyValue_8);     // '8' - Med Kit
+            SimpleButtonToKeyMap.Add(GamepadButton.DPAD_LEFT, KeyValue_9);     // '9' - Soda
+            SimpleButtonToKeyMap.Add(GamepadButton.DPAD_RIGHT, KeyValue_0);    // '0' - Pills
+            SimpleButtonToKeyMap.Add(GamepadButton.B, KeyValue_X);             // 'X' - Cancel Action
+            SimpleButtonToKeyMap.Add(GamepadButton.START, KeyValue_M);         // 'M' - Map
 
             InitInputHooks();
         }
@@ -358,6 +370,16 @@ namespace JoytsicTest
             return returnState;
         }
 
+        private void UpdateSimpleButtonToKeyMappings()
+        {
+            foreach (var entry in SimpleButtonToKeyMap)
+            {
+                GamepadButton button = entry.Key;
+                int keyboardValue = entry.Value;
+                UpdateButtonToKey(button, keyboardValue);
+            }
+        }
+
         private void TimerUpdate(object sender, EventArgs e)
         {
             FrameNumber++;
@@ -369,14 +391,13 @@ namespace JoytsicTest
             GamepadHistory.CurrentState = PAD_GetGamepadState(GamepadId);
             PAD_Refresh(GamepadId);
 
-            UpdateButtonToKey(GamepadButton.Y, KeyValue_R);             // 'R' - Reload
-            UpdateButtonToKey(GamepadButton.X, KeyValue_F);             // 'F' - Interact
-            UpdateButtonToKey(GamepadButton.DPAD_UP, KeyValue_7);       // '7' - Bandage
-            UpdateButtonToKey(GamepadButton.DPAD_DOWN, KeyValue_8);     // '8' - Med Kit
-            UpdateButtonToKey(GamepadButton.DPAD_LEFT, KeyValue_9);     // '9' - Soda
-            UpdateButtonToKey(GamepadButton.DPAD_RIGHT, KeyValue_0);    // '0' - Pills
-            UpdateButtonToKey(GamepadButton.B, KeyValue_X);             // 'X' - Cancel Action
-            UpdateButtonToKey(GamepadButton.START, KeyValue_M);         // 'M' - Map
+            // <Back> button toggles radial vs relative mouse movement
+            if (GamepadHistory.WasPressed(GamepadButton.BACK))
+            {
+                RadialMouseInput.Checked = !RadialMouseInput.Checked;
+            }
+
+            UpdateSimpleButtonToKeyMappings();
 
             // Cycle weapons
             {
@@ -456,6 +477,38 @@ namespace JoytsicTest
             return output;
         }
 
+        /// <summary>
+        /// Struct representing a point.
+        /// </summary>
+        [StructLayout(LayoutKind.Sequential)]
+        public struct POINT
+        {
+            public int X;
+            public int Y;
+
+            public static implicit operator Point(POINT point)
+            {
+                return new Point(point.X, point.Y);
+            }
+        }
+
+        /// <summary>
+        /// Retrieves the cursor's position, in screen coordinates.
+        /// </summary>
+        /// <see>See MSDN documentation for further information.</see>
+        [DllImport("user32.dll")]
+        public static extern bool GetCursorPos(out POINT lpPoint);
+
+        public static Point GetCursorPosition()
+        {
+            POINT lpPoint;
+            GetCursorPos(out lpPoint);
+            //bool success = User32.GetCursorPos(out lpPoint);
+            // if (!success)
+
+            return lpPoint;
+        }
+
         private void UpdateMousePosition()
         {
             // Get joystick deflection in range [-1.0 .. 1.0]
@@ -465,27 +518,60 @@ namespace JoytsicTest
             // Only send mouse input if there's deflection outside the deadzone
             if (cleanDeflection.X != 0.0f || cleanDeflection.Y != 0)
             {
-                const float MousePositionMaxRadiusScalar = 0.5f;
+                if (RadialMouseInput.Checked)
+                {
+                    const float MousePositionMaxRadiusScalar = 0.5f;
 
-                // If there's any input, move mouse to outer edge of circle in that direction
-                float r = (float)Math.Sqrt(cleanDeflection.X * cleanDeflection.X + cleanDeflection.Y * cleanDeflection.Y);
-                float deflectionX = cleanDeflection.X / r;
-                float deflectionY = -cleanDeflection.Y / r; // Negate because mouse positions are inverted from stick deflection
+                    // If there's any input, move mouse to outer edge of circle in that direction
+                    float r = (float)Math.Sqrt(cleanDeflection.X * cleanDeflection.X + cleanDeflection.Y * cleanDeflection.Y);
+                    float deflectionX = cleanDeflection.X / r;
+                    float deflectionY = -cleanDeflection.Y / r; // Negate because mouse positions are inverted from stick deflection
 
-                Rectangle resolution = Screen.PrimaryScreen.Bounds;
-                float aspectRatio = (float)resolution.Width / (float)resolution.Height;
+                    Rectangle resolution = Screen.PrimaryScreen.Bounds;
+                    float aspectRatio = (float)resolution.Width / (float)resolution.Height;
 
-                // Center mouse cursor in screen
-                // TODO - How does this work with multiple monitors?
-                int screenMouseCenter = 32768;  // Half of 65536 is always the center of the screen
-                // Scale 'X' position by aspect ratio so mouse position is circular regardless of resolution
-                int mouseX = screenMouseCenter + (int)(32768.0f * MousePositionMaxRadiusScalar * deflectionX / aspectRatio);
-                int mouseY = screenMouseCenter + (int)(32768.0f * MousePositionMaxRadiusScalar * deflectionY);
-                // Set mouse position
-                string commandString = string.Format(MouseCursorMoveFormatString, mouseX, mouseY);
-                label1.Text = string.Format("({0}) - {1}", FrameNumber, commandString);
+                    // Center mouse cursor in screen
+                    // TODO - How does this work with multiple monitors?
+                    int screenMouseCenter = 32768;  // Half of 65536 is always the center of the screen
+                                                    // Scale 'X' position by aspect ratio so mouse position is circular regardless of resolution
+                    int mouseX = screenMouseCenter + (int)(32768.0f * MousePositionMaxRadiusScalar * deflectionX / aspectRatio);
+                    int mouseY = screenMouseCenter + (int)(32768.0f * MousePositionMaxRadiusScalar * deflectionY);
+                    // Set mouse position
+                    string commandString = string.Format(MouseCursorMoveFormatString, mouseX, mouseY);
+                    label1.Text = string.Format("({0}) - {1}", FrameNumber, commandString);
 
-                SendSingleCommand(commandString);
+                    SendSingleCommand(commandString);
+                }
+                else
+                {
+                    Point oldCursorPosition = GetCursorPosition();
+                    Point newCursorPosition = oldCursorPosition;
+                    {
+                        if (!SubPixelMouseInput.Checked)
+                        {
+                            RelativeMouseMovementRemainder.X = 0;
+                            RelativeMouseMovementRemainder.Y = 0;
+                        }
+
+                        PointF deltaMouse = RelativeMouseMovementRemainder;
+                        deltaMouse.X += (cleanDeflection.X * RelativeMouseSensitivity);
+                        deltaMouse.Y += (cleanDeflection.Y * RelativeMouseSensitivity);
+                        RelativeMouseMovementRemainder.X = deltaMouse.X - (int)deltaMouse.X;
+                        RelativeMouseMovementRemainder.Y = deltaMouse.Y - (int)deltaMouse.Y;
+
+                        newCursorPosition.X = oldCursorPosition.X + (int)(deltaMouse.X);
+                        newCursorPosition.Y = oldCursorPosition.Y - (int)(deltaMouse.Y);
+                    }
+
+                    Point normalizedCursorPosition = newCursorPosition;
+                    normalizedCursorPosition.X = (newCursorPosition.X * 65536 + Screen.PrimaryScreen.Bounds.Width - 1) / Screen.PrimaryScreen.Bounds.Width;
+                    normalizedCursorPosition.Y = (newCursorPosition.Y * 65536 + Screen.PrimaryScreen.Bounds.Height - 1) / Screen.PrimaryScreen.Bounds.Height;
+
+
+                    string commandString = string.Format(MouseCursorMoveFormatString, normalizedCursorPosition.X, normalizedCursorPosition.Y);
+                    label1.Text = string.Format("({0}, {1}) - {2}", oldCursorPosition.X, oldCursorPosition.Y, commandString);
+                    SendSingleCommand(commandString);
+                }
             }
         }
     }
