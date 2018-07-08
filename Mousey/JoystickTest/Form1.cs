@@ -612,7 +612,7 @@ namespace JoytsicTest
                         newCursorPosition.X = oldCursorPosition.X + (int)(deltaMouse.X);
                         newCursorPosition.Y = oldCursorPosition.Y + (int)(deltaMouse.Y);
                     }
-                    d
+                    
                     Point normalizedCursorPosition = Point.Empty;
                     normalizedCursorPosition.X = (newCursorPosition.X * 65536 + screenResolution.Width - 1) / screenResolution.Width;
                     normalizedCursorPosition.Y = (newCursorPosition.Y * 65536 + screenResolution.Height - 1) / screenResolution.Height;
