@@ -49,6 +49,9 @@ namespace JoytsicTest
 
     struct GamepadState
     {
+        // Disable warning about parameters never being assigned to.
+        // These get marshaled over from the native dll
+#pragma warning disable 0649
         public float LeftStickX;
         public float LeftStickY;
         public float RightStickX;
@@ -56,6 +59,7 @@ namespace JoytsicTest
         public float LeftTrigger;
         public float RightTrigger;
         public UInt32 ButtonStateFlags;
+#pragma warning restore 0649
 
         public float GetAxisValue(GamepadAxis axis)
         {
@@ -196,8 +200,11 @@ namespace JoytsicTest
         // #define XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE  7849
         // #define XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE 8689
         // #define XINPUT_GAMEPAD_TRIGGER_THRESHOLD    30
-        const float InnerDeadZone = 0.2395f;  // Official MS suggested value = 7849.0f / 32768.0f = 0.2395;
-        const float OuterDeadZone = 0.85f;
+        const float LeftThumbInnerDeadZoneDefaultValue = 0.2395f;  // Official MS suggested value = 7849.0f / 32768.0f = 0.2395;
+        const float LeftThumbOuterDeadZoneDefaultValue = 0.85f;
+        const float RightThumbInnerDeadZoneDefaultValue = 0.2652f;  // Official MS suggested value = 8689.0f / 32768.0f = 0.2652;
+        const float RightThumbOuterDeadZoneDefaultValue = 0.85f;
+        const float TriggerDeadZoneDefaultValue = 0.0009f;  // Official MS suggested value = 30.0f / 32768.0f = 0.0009;
 
         const string KeyDownCommandFormatString = "1 0 0x00 {0}";
         const string KeyUpCommandFormatString = "1 0 0x02 {0}";
@@ -247,6 +254,11 @@ namespace JoytsicTest
         public Form1()
         {
             InitializeComponent();
+            LeftThumbInnerDeadZoneInput.Value = (decimal)LeftThumbInnerDeadZoneDefaultValue;
+            LeftThumbOuterDeadZoneInput.Value = (decimal)LeftThumbOuterDeadZoneDefaultValue;
+            RightThumbInnerDeadZoneInput.Value = (decimal)RightThumbInnerDeadZoneDefaultValue;
+            RightThumbOuterDeadZoneInput.Value = (decimal)RightThumbOuterDeadZoneDefaultValue;
+            TriggerDeadZoneInput.Value = (decimal)TriggerDeadZoneDefaultValue;
         }
 
         private void InitInputHooks()
@@ -273,6 +285,31 @@ namespace JoytsicTest
         private void Form1_FormClosed(object sender, FormClosedEventArgs e)
         {
             HK_EndHook();
+        }
+
+        private float LeftStickInnerDeadZone
+        {
+            get { return (float)LeftThumbInnerDeadZoneInput.Value; }
+        }
+
+        private float LeftStickOuterDeadZone
+        {
+            get { return (float)LeftThumbOuterDeadZoneInput.Value; }
+        }
+
+        private float RightStickInnerDeadZone
+        {
+            get { return (float)RightThumbInnerDeadZoneInput.Value; }
+        }
+
+        private float RightStickOuterDeadZone
+        {
+            get { return (float)RightThumbOuterDeadZoneInput.Value; }
+        }
+
+        private float TriggerDeadZone
+        {
+            get { return (float)TriggerDeadZoneInput.Value; }
         }
 
         private string GetRecordingString()
@@ -332,9 +369,6 @@ namespace JoytsicTest
             GamepadHistory.CurrentState = PAD_GetGamepadState(GamepadId);
             PAD_Refresh(GamepadId);
 
-            // TODO - Make deadzones and trigger thresholds parameterizable
-            float TriggerThreshold = 30.0f / 32768.0f;
-
             UpdateButtonToKey(GamepadButton.Y, KeyValue_R);             // 'R' - Reload
             UpdateButtonToKey(GamepadButton.X, KeyValue_F);             // 'F' - Interact
             UpdateButtonToKey(GamepadButton.DPAD_UP, KeyValue_7);       // '7' - Bandage
@@ -357,46 +391,46 @@ namespace JoytsicTest
             }
 
             // TODO - Generalize the "WasTriggerPulled/Released" functions to work for any axis
-            if (GamepadHistory.WasAxisPulled(GamepadAxis.RightTrigger, TriggerThreshold))
+            if (GamepadHistory.WasAxisPulled(GamepadAxis.RightTrigger, TriggerDeadZone))
             {
                 SendSingleCommand(LeftMouseDownCommand);
             }
-            if (GamepadHistory.WasAxisReleased(GamepadAxis.RightTrigger, TriggerThreshold))
+            if (GamepadHistory.WasAxisReleased(GamepadAxis.RightTrigger, TriggerDeadZone))
             {
                 SendSingleCommand(LeftMouseUpCommand);
             }
 
 
-            if (GamepadHistory.WasAxisPulled(GamepadAxis.LeftStickX, InnerDeadZone))
+            if (GamepadHistory.WasAxisPulled(GamepadAxis.LeftStickX, LeftStickInnerDeadZone))
             {
                 SendSingleCommand(DKeyDownCommand);
             }
-            if (GamepadHistory.WasAxisReleased(GamepadAxis.LeftStickX, InnerDeadZone))
+            if (GamepadHistory.WasAxisReleased(GamepadAxis.LeftStickX, LeftStickInnerDeadZone))
             {
                 SendSingleCommand(DKeyUpCommand);
             }
-            if (GamepadHistory.WasAxisPulled(GamepadAxis.LeftStickY, InnerDeadZone))
+            if (GamepadHistory.WasAxisPulled(GamepadAxis.LeftStickY, LeftStickInnerDeadZone))
             {
                 SendSingleCommand(WKeyDownCommand);
             }
-            if (GamepadHistory.WasAxisReleased(GamepadAxis.LeftStickY, InnerDeadZone))
+            if (GamepadHistory.WasAxisReleased(GamepadAxis.LeftStickY, LeftStickInnerDeadZone))
             {
                 SendSingleCommand(WKeyUpCommand);
             }
 
-            if (GamepadHistory.WasAxisPulled(GamepadAxis.LeftStickX, -InnerDeadZone))
+            if (GamepadHistory.WasAxisPulled(GamepadAxis.LeftStickX, -LeftStickInnerDeadZone))
             {
                 SendSingleCommand(AKeyDownCommand);
             }
-            if (GamepadHistory.WasAxisReleased(GamepadAxis.LeftStickX, -InnerDeadZone))
+            if (GamepadHistory.WasAxisReleased(GamepadAxis.LeftStickX, -LeftStickInnerDeadZone))
             {
                 SendSingleCommand(AKeyUpCommand);
             }
-            if (GamepadHistory.WasAxisPulled(GamepadAxis.LeftStickY, -InnerDeadZone))
+            if (GamepadHistory.WasAxisPulled(GamepadAxis.LeftStickY, -LeftStickInnerDeadZone))
             {
                 SendSingleCommand(SKeyDownCommand);
             }
-            if (GamepadHistory.WasAxisReleased(GamepadAxis.LeftStickY, -InnerDeadZone))
+            if (GamepadHistory.WasAxisReleased(GamepadAxis.LeftStickY, -LeftStickInnerDeadZone))
             {
                 SendSingleCommand(SKeyUpCommand);
             }
@@ -426,7 +460,7 @@ namespace JoytsicTest
         {
             // Get joystick deflection in range [-1.0 .. 1.0]
             PointF rawDeflection = new PointF(GamepadHistory.CurrentState.RightStickX, GamepadHistory.CurrentState.RightStickY);
-            PointF cleanDeflection = ApplyDeadzone(rawDeflection, InnerDeadZone, OuterDeadZone);
+            PointF cleanDeflection = ApplyDeadzone(rawDeflection, RightStickInnerDeadZone, RightStickOuterDeadZone);
 
             // Only send mouse input if there's deflection outside the deadzone
             if (cleanDeflection.X != 0.0f || cleanDeflection.Y != 0)
