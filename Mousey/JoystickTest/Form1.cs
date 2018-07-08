@@ -195,17 +195,6 @@ namespace JoytsicTest
         const uint VK_NUMLOCK = 0x90;
         const uint VK_SCROLL = 0x91;
 
-        // TODO - Implement good default deadzone values
-        // TODO - Allow deadzone customization
-        // #define XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE  7849
-        // #define XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE 8689
-        // #define XINPUT_GAMEPAD_TRIGGER_THRESHOLD    30
-        const float LeftThumbInnerDeadZoneDefaultValue = 0.2395f;  // Official MS suggested value = 7849.0f / 32768.0f = 0.2395;
-        const float LeftThumbOuterDeadZoneDefaultValue = 0.85f;
-        const float RightThumbInnerDeadZoneDefaultValue = 0.2652f;  // Official MS suggested value = 8689.0f / 32768.0f = 0.2652;
-        const float RightThumbOuterDeadZoneDefaultValue = 0.85f;
-        const float TriggerDeadZoneDefaultValue = 0.0009f;  // Official MS suggested value = 30.0f / 32768.0f = 0.0009;
-
         const string KeyDownCommandFormatString = "1 0 0x00 {0}";
         const string KeyUpCommandFormatString = "1 0 0x02 {0}";
         const string MouseCursorMoveFormatString = "0 0 0x8001 0x00 {0} {1}";
@@ -246,22 +235,42 @@ namespace JoytsicTest
         const int KeyValue_9 = 0x39;
         const int KeyValue_0 = 0x30;
 
+        const float LeftThumbInnerDeadZoneDefaultValue = 0.2395f;  // Official MS suggested value = 7849.0f / 32768.0f = 0.2395;
+        const float LeftThumbOuterDeadZoneDefaultValue = 0.85f;
+        const float RightThumbInnerDeadZoneDefaultValue = 0.1500f;  // Official MS suggested value = 8689.0f / 32768.0f = 0.2652;
+        const float RightThumbOuterDeadZoneDefaultValue = 0.85f;
+        const float TriggerDeadZoneDefaultValue = 0.0009f;  // Official MS suggested value = 30.0f / 32768.0f = 0.0009;
+
+        const bool FeatherMovementDefaultValue = true;
+        const bool RadialMouseDefaultValue = true;
+        const bool SubPixelMouseDefaultValue = true;
+        const float StickTranslationExponentDefaultValue = 3.0f;
+        const float MouseSensitivityDefaultValue = 25.0f;
+
         Timer UpdateTimer = null;
         int FrameNumber = 0;
         UInt32 GamepadId = 0;
         GamepadHistory GamepadHistory = new GamepadHistory();
         Dictionary<GamepadButton, int> SimpleButtonToKeyMap = new Dictionary<GamepadButton, int>();
         PointF RelativeMouseMovementRemainder = new PointF(0.0f, 0.0f);
-        float RelativeMouseSensitivity = 10.0f;
 
         public Form1()
         {
             InitializeComponent();
+
+            // Dead Zone initialization
             LeftThumbInnerDeadZoneInput.Value = (decimal)LeftThumbInnerDeadZoneDefaultValue;
             LeftThumbOuterDeadZoneInput.Value = (decimal)LeftThumbOuterDeadZoneDefaultValue;
             RightThumbInnerDeadZoneInput.Value = (decimal)RightThumbInnerDeadZoneDefaultValue;
             RightThumbOuterDeadZoneInput.Value = (decimal)RightThumbOuterDeadZoneDefaultValue;
             TriggerDeadZoneInput.Value = (decimal)TriggerDeadZoneDefaultValue;
+
+            // Mouse interpretation
+            FeatherMovementInput.Checked = FeatherMovementDefaultValue;
+            RadialMouseInput.Checked = RadialMouseDefaultValue;
+            SubPixelMouseInput.Checked = SubPixelMouseDefaultValue;
+            StickTranslationExponentInput.Value = (decimal)StickTranslationExponentDefaultValue;
+            MouseSensitivityInput.Value = (decimal)MouseSensitivityDefaultValue;
         }
 
         private void InitInputHooks()
@@ -275,13 +284,6 @@ namespace JoytsicTest
         {
             GamepadId = PAD_NewGamepad(1);
 
-            // Start 60hz update timer
-            UpdateTimer = new Timer();
-            UpdateTimer.Interval = (1000 / 60) - 1; // ~60hz
-            UpdateTimer.Tick += TimerUpdate;
-            UpdateTimer.Enabled = true;
-            UpdateTimer.Start();
-
             SimpleButtonToKeyMap.Add(GamepadButton.Y, KeyValue_R);             // 'R' - Reload
             SimpleButtonToKeyMap.Add(GamepadButton.X, KeyValue_F);             // 'F' - Interact
             SimpleButtonToKeyMap.Add(GamepadButton.DPAD_UP, KeyValue_7);       // '7' - Bandage
@@ -292,6 +294,13 @@ namespace JoytsicTest
             SimpleButtonToKeyMap.Add(GamepadButton.START, KeyValue_M);         // 'M' - Map
 
             InitInputHooks();
+
+            // Start 60hz update timer
+            UpdateTimer = new Timer();
+            UpdateTimer.Interval = (1000 / 60) - 1; // ~60hz
+            UpdateTimer.Tick += TimerUpdate;
+            UpdateTimer.Enabled = true;
+            UpdateTimer.Start();
         }
 
         private void Form1_FormClosed(object sender, FormClosedEventArgs e)
@@ -323,6 +332,29 @@ namespace JoytsicTest
         {
             get { return (float)TriggerDeadZoneInput.Value; }
         }
+
+        private bool IsFeatherMovement
+        {
+            get { return FeatherMovementInput.Checked; }
+        }
+
+        private bool IsRadialMouse
+        {
+            get { return RadialMouseInput.Checked; }
+        }
+        private bool IsSubPixelMouse
+        {
+            get { return SubPixelMouseInput.Checked; }
+        }
+        private float StickTranslationExponent
+        {
+            get { return (float)StickTranslationExponentInput.Value; }
+        }
+        private float MouseSensitivity
+        {
+            get { return (float)MouseSensitivityInput.Value; }
+        }
+
 
         private string GetRecordingString()
         {
@@ -419,6 +451,16 @@ namespace JoytsicTest
             if (GamepadHistory.WasAxisReleased(GamepadAxis.RightTrigger, TriggerDeadZone))
             {
                 SendSingleCommand(LeftMouseUpCommand);
+            }
+
+            // Left trigger maps to Right-Click
+            if (GamepadHistory.WasAxisPulled(GamepadAxis.LeftTrigger, TriggerDeadZone))
+            {
+                SendSingleCommand(RightMouseDownCommand);
+            }
+            if (GamepadHistory.WasAxisReleased(GamepadAxis.LeftTrigger, TriggerDeadZone))
+            {
+                SendSingleCommand(RightMouseUpCommand);
             }
 
 
@@ -518,27 +560,27 @@ namespace JoytsicTest
             // Only send mouse input if there's deflection outside the deadzone
             if (cleanDeflection.X != 0.0f || cleanDeflection.Y != 0)
             {
-                if (RadialMouseInput.Checked)
+                Rectangle screenResolution = Screen.PrimaryScreen.Bounds;
+                float aspectRatio = (float)screenResolution.Width / (float)screenResolution.Height;
+
+                // Calculate the deflection radially (radius and vector)
+                float deflectionRadius = (float)Math.Sqrt(cleanDeflection.X * cleanDeflection.X + cleanDeflection.Y * cleanDeflection.Y);
+                float deflectionDirectionX = cleanDeflection.X / deflectionRadius;
+                float deflectionDirectionY = -cleanDeflection.Y / deflectionRadius; // Negate because mouse positions are inverted from stick deflection
+
+                if (IsRadialMouse)
                 {
                     const float MousePositionMaxRadiusScalar = 0.5f;
-
-                    // If there's any input, move mouse to outer edge of circle in that direction
-                    float r = (float)Math.Sqrt(cleanDeflection.X * cleanDeflection.X + cleanDeflection.Y * cleanDeflection.Y);
-                    float deflectionX = cleanDeflection.X / r;
-                    float deflectionY = -cleanDeflection.Y / r; // Negate because mouse positions are inverted from stick deflection
-
-                    Rectangle resolution = Screen.PrimaryScreen.Bounds;
-                    float aspectRatio = (float)resolution.Width / (float)resolution.Height;
 
                     // Center mouse cursor in screen
                     // TODO - How does this work with multiple monitors?
                     int screenMouseCenter = 32768;  // Half of 65536 is always the center of the screen
                                                     // Scale 'X' position by aspect ratio so mouse position is circular regardless of resolution
-                    int mouseX = screenMouseCenter + (int)(32768.0f * MousePositionMaxRadiusScalar * deflectionX / aspectRatio);
-                    int mouseY = screenMouseCenter + (int)(32768.0f * MousePositionMaxRadiusScalar * deflectionY);
+                    int mouseX = screenMouseCenter + (int)(32768.0f * MousePositionMaxRadiusScalar * deflectionDirectionX / aspectRatio);
+                    int mouseY = screenMouseCenter + (int)(32768.0f * MousePositionMaxRadiusScalar * deflectionDirectionY);
                     // Set mouse position
                     string commandString = string.Format(MouseCursorMoveFormatString, mouseX, mouseY);
-                    label1.Text = string.Format("({0}) - {1}", FrameNumber, commandString);
+                    toolStripStatusLabel1.Text = string.Format("({0}) - {1}", FrameNumber, commandString);
 
                     SendSingleCommand(commandString);
                 }
@@ -547,32 +589,44 @@ namespace JoytsicTest
                     Point oldCursorPosition = GetCursorPosition();
                     Point newCursorPosition = oldCursorPosition;
                     {
-                        if (!SubPixelMouseInput.Checked)
+                        if (!IsSubPixelMouse)
                         {
                             RelativeMouseMovementRemainder.X = 0;
                             RelativeMouseMovementRemainder.Y = 0;
                         }
 
-                        PointF deltaMouse = RelativeMouseMovementRemainder;
-                        deltaMouse.X += (cleanDeflection.X * RelativeMouseSensitivity);
-                        deltaMouse.Y += (cleanDeflection.Y * RelativeMouseSensitivity);
+                        // Apply the power curve the the input
+                        // TODO - Have separate power curves per stick?
+                        float translatedDeflectionRadius = (float)Math.Pow(deflectionRadius, StickTranslationExponent);
+                        translatedDeflectionRadius = Math.Min(Math.Max(translatedDeflectionRadius, 0.0f), 1.0f);
+                        PointF translatedDeflection = PointF.Empty;
+                        translatedDeflection.X = deflectionDirectionX * translatedDeflectionRadius;
+                        translatedDeflection.Y = deflectionDirectionY * translatedDeflectionRadius;
+
+                        PointF deltaMouse = PointF.Empty;
+                        deltaMouse.X += (translatedDeflection.X * MouseSensitivity);
+                        deltaMouse.Y += (translatedDeflection.Y * MouseSensitivity);
                         RelativeMouseMovementRemainder.X = deltaMouse.X - (int)deltaMouse.X;
                         RelativeMouseMovementRemainder.Y = deltaMouse.Y - (int)deltaMouse.Y;
 
                         newCursorPosition.X = oldCursorPosition.X + (int)(deltaMouse.X);
-                        newCursorPosition.Y = oldCursorPosition.Y - (int)(deltaMouse.Y);
+                        newCursorPosition.Y = oldCursorPosition.Y + (int)(deltaMouse.Y);
                     }
 
-                    Point normalizedCursorPosition = newCursorPosition;
-                    normalizedCursorPosition.X = (newCursorPosition.X * 65536 + Screen.PrimaryScreen.Bounds.Width - 1) / Screen.PrimaryScreen.Bounds.Width;
-                    normalizedCursorPosition.Y = (newCursorPosition.Y * 65536 + Screen.PrimaryScreen.Bounds.Height - 1) / Screen.PrimaryScreen.Bounds.Height;
-
+                    Point normalizedCursorPosition = Point.Empty;
+                    normalizedCursorPosition.X = (newCursorPosition.X * 65536 + screenResolution.Width - 1) / screenResolution.Width;
+                    normalizedCursorPosition.Y = (newCursorPosition.Y * 65536 + screenResolution.Height - 1) / screenResolution.Height;
 
                     string commandString = string.Format(MouseCursorMoveFormatString, normalizedCursorPosition.X, normalizedCursorPosition.Y);
-                    label1.Text = string.Format("({0}, {1}) - {2}", oldCursorPosition.X, oldCursorPosition.Y, commandString);
+                    toolStripStatusLabel1.Text = string.Format("({0}, {1}) - {2}", oldCursorPosition.X, oldCursorPosition.Y, commandString);
                     SendSingleCommand(commandString);
                 }
             }
+        }
+
+        private void aboutToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            MessageBox.Show("Icon made by [freepik](https://www.freepik.com/) from www.flaticon.com");
         }
     }
 }
